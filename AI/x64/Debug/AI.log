@@ -1,0 +1,4 @@
+﻿  AI.cpp
+C:\Users\kaptu\Рабочий стол\AI\AI\AI.cpp(138,23): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data
+C:\Users\kaptu\Рабочий стол\AI\AI\AI.cpp(204,13): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
+  AI.vcxproj -> C:\Users\kaptu\Рабочий стол\AI\x64\Debug\AI.exe
