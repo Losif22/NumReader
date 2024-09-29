@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <iomanip>
+#include <algorithm>
 
 // Константа для размера изображения
 const int IMAGE_SIZE = 100;
@@ -125,6 +126,7 @@ public:
 // Глобальные переменные
 NeuralNetwork* nn;
 std::vector<double> userDrawing(IMAGE_SIZE* IMAGE_SIZE, 0);
+bool readyToPredict = false;
 
 // Функция для рисования в окне
 void DrawInMemory(HDC hdc, HWND hwnd) {
@@ -166,11 +168,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         isDrawing = false;
         DrawInMemory(hdc, hwnd);
         ReleaseDC(hwnd, hdc);
+        readyToPredict = true; // Устанавливаем флаг готовности к предсказанию
+        break;
 
-        {
+    case WM_MOUSEMOVE:
+        if (isDrawing) {
+            LineTo(hdc, LOWORD(lParam), HIWORD(lParam));
+        }
+        break;
+
+    case WM_KEYDOWN:
+        if (wParam == VK_RETURN && readyToPredict) { // Если нажата клавиша "Enter" и готово к предсказанию
             // Прогнозирование числа
             std::vector<double> result = nn->feedForward(userDrawing);
-            int predictedNumber = result[0] > result[1] ? 0 : 1;
+            int predictedNumber = std::distance(result.begin(), std::max_element(result.begin(), result.end()));
 
             // Форматирование строки с результатом
             wchar_t buffer[256];
@@ -178,12 +189,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
             // Показать сообщение
             MessageBox(hwnd, buffer, TEXT("Результат"), MB_OK);
-        }
-        break;
-
-    case WM_MOUSEMOVE:
-        if (isDrawing) {
-            LineTo(hdc, LOWORD(lParam), HIWORD(lParam));
+            readyToPredict = false; // Сбрасываем флаг готовности
         }
         break;
 
@@ -216,8 +222,7 @@ void showProgressBar(int progress, int total) {
 // Главная функция
 int main() {
     setlocale(LC_ALL, "uk_UA");
-    // Создание нейросети
-    nn = new NeuralNetwork(IMAGE_SIZE * IMAGE_SIZE, 2); // 2 выхода для 0 и 1
+    nn = new NeuralNetwork(IMAGE_SIZE * IMAGE_SIZE, 10); // 10 выходов для 0-9
 
     // Выбор режима работы
     std::cout << "Введiть 0 для початку навчання з нуля або 1 для продовження навчання з попереднiм навчанням: ";
@@ -230,25 +235,27 @@ int main() {
             std::cerr << "Помилка завантаження. Починаємо навчання з нуля.\n";
         }
         else {
-            // Переход к распознаванию, если загрузка успешна
             std::cout << "Ваги успiшно завантаженi.\n";
         }
     }
 
     if (choice == 0 || !nn->loadWeights("weights.bin")) {
-        // Загружаем изображения для обучения
-        std::vector<std::vector<double>> zeroImages;
-        std::vector<std::vector<double>> oneImages;
+        std::vector<std::vector<double>> digitImages[10];
 
-        for (int i = 1; i <= 20; ++i) {
-            wchar_t filename[100];
-            swprintf(filename, 100, L"./zero/zero%d.bmp", i);
-            zeroImages.push_back(LoadBMP(filename));
-        }
-        for (int i = 1; i <= 20; ++i) {
-            wchar_t filename[100];
-            swprintf(filename, 100, L"./one/one%d.bmp", i);
-            oneImages.push_back(LoadBMP(filename));
+        // Загрузка изображений для 0-9
+        for (int digit = 0; digit < 10; ++digit) {
+            for (int i = 1; i <= 20; ++i) {
+                wchar_t filename[100];
+                swprintf(filename, 100, L"./%s/%s%d.bmp",
+                    digit == 0 ? L"zero" : digit == 1 ? L"one" : digit == 2 ? L"two" :
+                    digit == 3 ? L"three" : digit == 4 ? L"four" : digit == 5 ? L"five" :
+                    digit == 6 ? L"six" : digit == 7 ? L"seven" : digit == 8 ? L"eight" : L"nine",
+                    digit == 0 ? L"zero" : digit == 1 ? L"one" : digit == 2 ? L"two" :
+                    digit == 3 ? L"three" : digit == 4 ? L"four" : digit == 5 ? L"five" :
+                    digit == 6 ? L"six" : digit == 7 ? L"seven" : digit == 8 ? L"eight" : L"nine",
+                    i);
+                digitImages[digit].push_back(LoadBMP(filename));
+            }
         }
 
         // Обучение
@@ -257,22 +264,16 @@ int main() {
 
         std::cout << "Навчання нейромережi...\n";
         for (int i = 0; i < epochs; ++i) {
-            // Обучение на изображениях для нуля
-            for (const auto& zeroImage : zeroImages) {
-                nn->backpropagation(zeroImage, { 1.0, 0.0 }, learningRate);
+            for (int digit = 0; digit < 10; ++digit) {
+                for (const auto& image : digitImages[digit]) {
+                    std::vector<double> target(10, 0.0);
+                    target[digit] = 1.0; // One-hot encoding
+                    nn->backpropagation(image, target, learningRate);
+                }
             }
-
-            // Обучение на изображениях для единицы
-            for (const auto& oneImage : oneImages) {
-                nn->backpropagation(oneImage, { 0.0, 1.0 }, learningRate);
-            }
-
-            // Отображение прогресса
             showProgressBar(i + 1, epochs);
         }
         std::cout << "\nНавчання завершено!\n";
-
-        // Сохранение весов после обучения
         nn->saveWeights("weights.bin");
     }
 
@@ -296,5 +297,6 @@ int main() {
         DispatchMessage(&msg);
     }
 
+    delete nn; // Освобождение памяти
     return 0;
 }
